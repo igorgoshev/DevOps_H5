@@ -33,6 +33,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
+
     const { title, description, status } = req.body;
 
     if (!title) {
