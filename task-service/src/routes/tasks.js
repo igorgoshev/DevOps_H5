@@ -8,6 +8,7 @@ router.use(authMiddleware);
 
 router.get('/', async (req, res) => {
   try {
+
     const { status } = req.query;
     const filter = { userId: req.userId };
     if (status) filter.status = status;
