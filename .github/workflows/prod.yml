@@ -1,0 +1,142 @@
+name: CI/CD - Production
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/lab5
+
+jobs:
+
+  test-user-service:
+    name: Test | user-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./user-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: user-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  test-task-service:
+    name: Test | task-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./task-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: task-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  build-and-push:
+    name: Build & Push | :latest + :SHA tags
+    runs-on: ubuntu-latest
+    needs: [test-user-service, test-task-service]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get short commit SHA
+        id: meta
+        run: echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push user-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./user-service
+          file: ./user-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/user-service:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/user-service:${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push task-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./task-service
+          file: ./task-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/task-service:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/task-service:${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-prod:
+    name: Deploy | Production (simulated)
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Simulate — connect to production server
+        run: |
+          echo "Connecting to production server..."
+          echo "Host: prod.example.com"
+          echo "User: deploy"
+
+      - name: Simulate — pull latest images
+        run: |
+          echo "Pulling Docker images from ghcr.io..."
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/user-service:latest"
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/user-service:${{ needs.build-and-push.outputs.version }}"
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/task-service:latest"
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/task-service:${{ needs.build-and-push.outputs.version }}"
+
+      - name: Simulate — run docker compose up
+        run: |
+          echo "Deploying to PRODUCTION environment..."
+
+      - name: Simulate — health checks
+        run: |
+          echo "Time:    $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Approved by: ${{ github.actor }}"
